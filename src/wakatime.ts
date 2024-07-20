@@ -61,6 +61,8 @@ export class WakaTime {
   private resourcesLocation: string;
   private lastApiKeyPrompted: number = 0;
   private isMetricsEnabled: boolean = false;
+  private heartbeatsOfflineOnlySentAt: number = 0;
+  private heartbeatsOfflineOnlyCount: number = 0;
 
   constructor(extensionPath: string, logger: Logger) {
     this.extensionPath = extensionPath;
@@ -368,7 +370,9 @@ export class WakaTime {
       if (apiUrl.value?.trim()) {
         try {
           const parsedUrl = new URL(apiUrl.value);
-          url = `${parsedUrl.protocol}//${parsedUrl.hostname}${parsedUrl.port ? `:${parsedUrl.port}` : ''}`;
+          url = `${parsedUrl.protocol}//${parsedUrl.hostname}${
+            parsedUrl.port ? `:${parsedUrl.port}` : ''
+          }`;
         } catch (e) {
           this.logger.warnException(e);
         }
@@ -549,6 +553,14 @@ export class WakaTime {
 
     args.push('--entity', Utils.quote(file));
 
+    if (this._useOfflineOnly()) {
+      args.push('--offline-only');
+      this.heartbeatsOfflineOnlyCount += 1;
+    } else {
+      this.heartbeatsOfflineOnlySentAt = Date.now();
+      this.heartbeatsOfflineOnlyCount = 0;
+    }
+
     let user_agent =
       this.agentName + '/' + vscode.version + ' vscode-wakatime/' + this.extension.version;
     args.push('--plugin', Utils.quote(user_agent));
@@ -643,6 +655,13 @@ export class WakaTime {
         this.logger.error(error_msg);
       }
     });
+  }
+
+  private _useOfflineOnly() {
+    if (!this.heartbeatsOfflineOnlySentAt) return false;
+    if (this.heartbeatsOfflineOnlyCount >= 24) return false;
+    if (this.heartbeatsOfflineOnlySentAt + 120000 < Date.now()) return false;
+    return true;
   }
 
   private getCodingActivity() {
